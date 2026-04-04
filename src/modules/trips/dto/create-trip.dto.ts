@@ -1,4 +1,5 @@
 import {
+  IsArray,
   IsNotEmpty,
   IsString,
   IsNumber,
@@ -29,6 +30,11 @@ export class CreateTripDto {
   @IsNotEmpty()
   @IsString()
   destination: string;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  waypoints?: string[];
 
   @IsNotEmpty()
   @IsString()

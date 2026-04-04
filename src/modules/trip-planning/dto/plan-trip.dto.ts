@@ -1,4 +1,13 @@
-import { IsNotEmpty, IsString, IsNumber, IsOptional, IsBoolean, Min, Max } from 'class-validator';
+import {
+  IsArray,
+  IsBoolean,
+  IsNotEmpty,
+  IsNumber,
+  IsOptional,
+  IsString,
+  Max,
+  Min,
+} from 'class-validator';
 
 export class PlanTripDto {
   @IsNotEmpty()
@@ -8,6 +17,11 @@ export class PlanTripDto {
   @IsNotEmpty()
   @IsString()
   destination: string;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  waypoints?: string[];
 
   @IsNotEmpty()
   @IsString()
