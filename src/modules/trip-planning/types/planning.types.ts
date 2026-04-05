@@ -1,6 +1,6 @@
 export interface TripSegment {
   order: number;
-  type: 'DRIVING' | 'REST' | 'MEAL' | 'FUEL' | 'SLEEP';
+  type: 'DRIVING' | 'REST' | 'MEAL' | 'FUEL' | 'SLEEP' | 'SIGHTSEEING';
   startLocation: string;
   endLocation?: string;
   distance?: number;

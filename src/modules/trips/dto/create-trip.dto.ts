@@ -63,6 +63,30 @@ export class CreateTripDto {
   mealBreakEnabled?: boolean;
 
   @IsOptional()
+  @IsBoolean()
+  breakfastEnabled?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  lunchEnabled?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  afternoonSnackEnabled?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  dinnerEnabled?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  bathroomBreaksEnabled?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  stretchBreaksEnabled?: boolean;
+
+  @IsOptional()
   @IsNumber()
   @Min(1)
   travelersCount?: number;

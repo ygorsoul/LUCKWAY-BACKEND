@@ -5,6 +5,33 @@ import { TollProvider } from './interfaces/toll-provider.interface';
 import { PlanTripDto } from './dto';
 import { TripPlanningResult, TripSegment } from './types/planning.types';
 
+interface StopEvent {
+  atDrivingMinute: number;
+  type: 'REST' | 'MEAL' | 'FUEL' | 'SLEEP' | 'SIGHTSEEING';
+  stopDuration: number;
+  stopNote: string;
+  locationName: string;
+  isWaypoint?: boolean;
+}
+
+interface BuildSegmentsConfig {
+  origin: string;
+  destination: string;
+  waypoints: string[];
+  totalDistanceKm: number;
+  totalDurationMinutes: number;
+  maxDrivingMinutesPerDay: number;
+  breakfastEnabled: boolean;
+  lunchEnabled: boolean;
+  afternoonSnackEnabled: boolean;
+  dinnerEnabled: boolean;
+  bathroomBreaksEnabled: boolean;
+  stretchBreaksEnabled: boolean;
+  fuelStopsCount: number;
+  fuelCost: number;
+  tollCost: number;
+}
+
 @Injectable()
 export class TripPlanningService {
   constructor(
@@ -42,7 +69,16 @@ export class TripPlanningService {
     });
 
     // Calculate fuel consumption
-    const fuelPrice = dto.fuelPrice || 5.5; // Default R$ 5.50 per liter
+    // Use per-country weighted average if provided, otherwise fall back to single fuelPrice
+    let fuelPrice: number;
+    if (dto.fuelPriceByCountry && Object.keys(dto.fuelPriceByCountry).length > 0) {
+      const prices = Object.values(dto.fuelPriceByCountry).filter((p) => p > 0);
+      fuelPrice = prices.length > 0
+        ? prices.reduce((a, b) => a + b, 0) / prices.length
+        : (dto.fuelPrice || 5.5);
+    } else {
+      fuelPrice = dto.fuelPrice || 5.5;
+    }
     const fuelNeeded = route.distanceKm / vehicle.averageConsumption;
     const fuelCost = fuelNeeded * fuelPrice;
 
@@ -54,19 +90,32 @@ export class TripPlanningService {
 
     // Configuration
     const maxDrivingHoursPerDay = dto.maxDrivingHoursPerDay || 8;
-    const mealBreakEnabled = dto.mealBreakEnabled !== false;
     const maxDrivingMinutesPerDay = maxDrivingHoursPerDay * 60;
+
+    // Resolve meal/stop settings (individual fields override legacy mealBreakEnabled)
+    const mealBreakEnabled = dto.mealBreakEnabled !== false;
+    const lunchEnabled = dto.lunchEnabled ?? mealBreakEnabled;
+    const breakfastEnabled = dto.breakfastEnabled ?? false;
+    const afternoonSnackEnabled = dto.afternoonSnackEnabled ?? false;
+    const dinnerEnabled = dto.dinnerEnabled ?? false;
+    const bathroomBreaksEnabled = dto.bathroomBreaksEnabled ?? false;
+    const stretchBreaksEnabled = dto.stretchBreaksEnabled ?? false;
 
     // Build segments
     const segments = this.buildSegments({
       origin: dto.origin,
       destination: dto.destination,
+      waypoints: dto.waypoints || [],
       totalDistanceKm: route.distanceKm,
       totalDurationMinutes: route.durationMinutes,
       maxDrivingMinutesPerDay,
-      mealBreakEnabled,
+      breakfastEnabled,
+      lunchEnabled,
+      afternoonSnackEnabled,
+      dinnerEnabled,
+      bathroomBreaksEnabled,
+      stretchBreaksEnabled,
       fuelStopsCount,
-      autonomyKm,
       fuelCost,
       tollCost: tolls.totalCost,
     });
@@ -89,107 +138,208 @@ export class TripPlanningService {
     };
   }
 
-  private buildSegments(config: {
-    origin: string;
-    destination: string;
-    totalDistanceKm: number;
-    totalDurationMinutes: number;
-    maxDrivingMinutesPerDay: number;
-    mealBreakEnabled: boolean;
-    fuelStopsCount: number;
-    autonomyKm: number;
-    fuelCost: number;
-    tollCost: number;
-  }): TripSegment[] {
+  private buildSegments(config: BuildSegmentsConfig): TripSegment[] {
     const segments: TripSegment[] = [];
     let order = 1;
 
-    // Check if trip can be done in one day
-    if (config.totalDurationMinutes <= config.maxDrivingMinutesPerDay) {
-      // Single day trip
-      segments.push({
-        order: order++,
-        type: 'DRIVING',
-        startLocation: config.origin,
-        endLocation: config.destination,
-        distance: config.totalDistanceKm,
-        estimatedTime: config.totalDurationMinutes,
-        fuelCost: config.fuelCost,
-        tollCost: config.tollCost,
-      });
+    const {
+      origin,
+      destination,
+      waypoints,
+      totalDistanceKm,
+      totalDurationMinutes,
+      maxDrivingMinutesPerDay,
+      breakfastEnabled,
+      lunchEnabled,
+      afternoonSnackEnabled,
+      dinnerEnabled,
+      bathroomBreaksEnabled,
+      stretchBreaksEnabled,
+      fuelStopsCount,
+      fuelCost,
+      tollCost,
+    } = config;
 
-      // Add meal break if enabled and trip is long enough (> 4 hours)
-      if (config.mealBreakEnabled && config.totalDurationMinutes > 240) {
-        segments.push({
-          order: order++,
+    const stopEvents: StopEvent[] = [];
+
+    // Helper: is a given minute within 'threshold' minutes of any existing event?
+    const isNearEvent = (minute: number, threshold: number): boolean =>
+      stopEvents.some((e) => Math.abs(e.atDrivingMinute - minute) < threshold);
+
+    // 1. Multi-day sleep boundaries (highest priority)
+    const numberOfDays = Math.ceil(totalDurationMinutes / maxDrivingMinutesPerDay);
+
+    for (let day = 1; day < numberOfDays; day++) {
+      const sleepAt = day * maxDrivingMinutesPerDay;
+
+      // Dinner just before sleep (same driving position, stops appear in order)
+      if (dinnerEnabled) {
+        stopEvents.push({
+          atDrivingMinute: sleepAt - 0.3,
           type: 'MEAL',
-          startLocation: 'Parada intermediária',
           stopDuration: 60,
-          stopNote: 'Parada para refeição',
+          stopNote: 'Parada para jantar',
+          locationName: `Jantar - Dia ${day}`,
         });
       }
-    } else {
-      // Multi-day trip - split into segments
-      const numberOfDays = Math.ceil(config.totalDurationMinutes / config.maxDrivingMinutesPerDay);
-      const kmPerDay = config.totalDistanceKm / numberOfDays;
-      const minutesPerDay = config.totalDurationMinutes / numberOfDays;
-      const fuelCostPerDay = config.fuelCost / numberOfDays;
-      const tollCostPerDay = config.tollCost / numberOfDays;
 
-      for (let day = 0; day < numberOfDays; day++) {
-        const isFirstDay = day === 0;
-        const isLastDay = day === numberOfDays - 1;
+      stopEvents.push({
+        atDrivingMinute: sleepAt,
+        type: 'SLEEP',
+        stopDuration: 480,
+        stopNote: 'Pernoite',
+        locationName: `Pernoite - Dia ${day}`,
+      });
 
-        // Driving segment for the day
+      // Breakfast just after sleep
+      if (breakfastEnabled) {
+        stopEvents.push({
+          atDrivingMinute: sleepAt + 0.3,
+          type: 'MEAL',
+          stopDuration: 30,
+          stopNote: 'Parada para café da manhã',
+          locationName: `Café da manhã - Dia ${day + 1}`,
+        });
+      }
+    }
+
+    // 2. Mandatory waypoints (proportionally distributed along route)
+    waypoints.forEach((wp, i) => {
+      const fraction = (i + 1) / (waypoints.length + 1);
+      stopEvents.push({
+        atDrivingMinute: fraction * totalDurationMinutes,
+        type: 'SIGHTSEEING',
+        stopDuration: 30,
+        stopNote: `Parada em ${wp}`,
+        locationName: wp,
+        isWaypoint: true,
+      });
+    });
+
+    // 3. Meal stops: lunch and afternoon snack
+    if (lunchEnabled && totalDurationMinutes > 240) {
+      const lunchAt = totalDurationMinutes / 2;
+      if (!isNearEvent(lunchAt, 70)) {
+        stopEvents.push({
+          atDrivingMinute: lunchAt,
+          type: 'MEAL',
+          stopDuration: 60,
+          stopNote: 'Parada para almoço',
+          locationName: 'Almoço',
+        });
+      }
+    }
+
+    if (afternoonSnackEnabled && totalDurationMinutes > 360) {
+      const snackAt = totalDurationMinutes * 0.75;
+      if (!isNearEvent(snackAt, 50)) {
+        stopEvents.push({
+          atDrivingMinute: snackAt,
+          type: 'MEAL',
+          stopDuration: 20,
+          stopNote: 'Parada para café da tarde',
+          locationName: 'Café da tarde',
+        });
+      }
+    }
+
+    // 4. Bathroom / stretch stops every 2 hours of driving
+    const restBreakEnabled = bathroomBreaksEnabled || stretchBreaksEnabled;
+    if (restBreakEnabled) {
+      const restNote =
+        bathroomBreaksEnabled && stretchBreaksEnabled
+          ? 'Parada para banheiro e alongamento'
+          : bathroomBreaksEnabled
+            ? 'Parada para banheiro'
+            : 'Parada para alongamento';
+
+      let restAt = 120; // first stop after 2h driving
+      while (restAt < totalDurationMinutes - 30) {
+        if (!isNearEvent(restAt, 40)) {
+          stopEvents.push({
+            atDrivingMinute: restAt,
+            type: 'REST',
+            stopDuration: 15,
+            stopNote: restNote,
+            locationName: 'Parada de descanso',
+          });
+        }
+        restAt += 120;
+      }
+    }
+
+    // 5. Fuel stops (distributed proportionally, skip if near another stop)
+    if (fuelStopsCount > 0) {
+      for (let i = 1; i <= fuelStopsCount; i++) {
+        const fuelAt = (i / (fuelStopsCount + 1)) * totalDurationMinutes;
+        if (!isNearEvent(fuelAt, 20)) {
+          stopEvents.push({
+            atDrivingMinute: fuelAt,
+            type: 'FUEL',
+            stopDuration: 15,
+            stopNote: 'Parada para abastecimento',
+            locationName: `Posto de combustível ${i}`,
+          });
+        }
+      }
+    }
+
+    // Sort all events by driving minute
+    stopEvents.sort((a, b) => a.atDrivingMinute - b.atDrivingMinute);
+
+    // Build alternating DRIVING → STOP segments
+    let prevDrivingMinute = 0;
+    let prevLocation = origin;
+
+    for (const event of stopEvents) {
+      const drivingDuration = event.atDrivingMinute - prevDrivingMinute;
+
+      // Add driving segment only if meaningful (> 1 min)
+      if (drivingDuration > 1) {
+        const fraction = drivingDuration / totalDurationMinutes;
+        const toLocation = event.isWaypoint ? event.locationName : 'Parada intermediária';
         segments.push({
           order: order++,
           type: 'DRIVING',
-          startLocation: isFirstDay ? config.origin : `Trecho ${day + 1}`,
-          endLocation: isLastDay ? config.destination : `Fim do dia ${day + 1}`,
-          distance: kmPerDay,
-          estimatedTime: minutesPerDay,
-          fuelCost: fuelCostPerDay,
-          tollCost: tollCostPerDay,
+          startLocation: prevLocation,
+          endLocation: toLocation,
+          distance: totalDistanceKm * fraction,
+          estimatedTime: Math.round(drivingDuration),
+          fuelCost: fuelCost * fraction,
+          tollCost: tollCost * fraction,
         });
-
-        // Meal break
-        if (config.mealBreakEnabled) {
-          segments.push({
-            order: order++,
-            type: 'MEAL',
-            startLocation: `Parada - Dia ${day + 1}`,
-            stopDuration: 60,
-            stopNote: 'Parada para almoço',
-          });
-        }
-
-        // Sleep stop (except on last day)
-        if (!isLastDay) {
-          segments.push({
-            order: order++,
-            type: 'SLEEP',
-            startLocation: `Pernoite - Dia ${day + 1}`,
-            stopDuration: 480, // 8 hours
-            stopNote: 'Parada para pernoite',
-          });
-        }
+        prevLocation = event.isWaypoint ? event.locationName : 'Em rota';
       }
+
+      prevDrivingMinute = event.atDrivingMinute;
+
+      // Add the stop segment
+      segments.push({
+        order: order++,
+        type: event.type,
+        startLocation: event.locationName,
+        stopDuration: event.stopDuration,
+        stopNote: event.stopNote,
+      });
     }
 
-    // Add fuel stops if needed
-    if (config.fuelStopsCount > 0) {
-      for (let i = 0; i < config.fuelStopsCount; i++) {
-        segments.push({
-          order: order++,
-          type: 'FUEL',
-          startLocation: `Posto de combustível ${i + 1}`,
-          stopDuration: 15,
-          stopNote: 'Parada para abastecimento',
-        });
-      }
+    // Final driving segment to destination
+    const remainingDuration = totalDurationMinutes - prevDrivingMinute;
+    if (remainingDuration > 1) {
+      const fraction = remainingDuration / totalDurationMinutes;
+      segments.push({
+        order: order++,
+        type: 'DRIVING',
+        startLocation: prevLocation,
+        endLocation: destination,
+        distance: totalDistanceKm * fraction,
+        estimatedTime: Math.round(remainingDuration),
+        fuelCost: fuelCost * fraction,
+        tollCost: tollCost * fraction,
+      });
     }
 
-    return segments.sort((a, b) => a.order - b.order);
+    return segments;
   }
 
   private calculateSummary(segments: TripSegment[], totalDistanceKm: number) {
@@ -197,6 +347,7 @@ export class TripPlanningService {
     const restStops = segments.filter((s) => s.type === 'REST').length;
     const mealStops = segments.filter((s) => s.type === 'MEAL').length;
     const sleepStops = segments.filter((s) => s.type === 'SLEEP').length;
+    const waypointStops = segments.filter((s) => s.type === 'SIGHTSEEING').length;
 
     const drivingDays = sleepStops + 1;
     const averageKmPerDay = totalDistanceKm / drivingDays;
@@ -206,6 +357,7 @@ export class TripPlanningService {
       totalRestStops: restStops,
       totalMealStops: mealStops,
       totalSleepStops: sleepStops,
+      totalWaypointStops: waypointStops,
       averageKmPerDay,
     };
   }

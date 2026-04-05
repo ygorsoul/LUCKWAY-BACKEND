@@ -3,6 +3,7 @@ import {
   IsBoolean,
   IsNotEmpty,
   IsNumber,
+  IsObject,
   IsOptional,
   IsString,
   Max,
@@ -46,6 +47,30 @@ export class PlanTripDto {
   mealBreakEnabled?: boolean;
 
   @IsOptional()
+  @IsBoolean()
+  breakfastEnabled?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  lunchEnabled?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  afternoonSnackEnabled?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  dinnerEnabled?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  bathroomBreaksEnabled?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  stretchBreaksEnabled?: boolean;
+
+  @IsOptional()
   @IsNumber()
   @Min(1)
   travelersCount?: number;
@@ -54,6 +79,11 @@ export class PlanTripDto {
   @IsNumber()
   @Min(0)
   fuelPrice?: number;
+
+  // Per-country fuel prices. When provided, a weighted average is used for cost calculation.
+  @IsOptional()
+  @IsObject()
+  fuelPriceByCountry?: Record<string, number>;
 
   @IsOptional()
   @IsString()
