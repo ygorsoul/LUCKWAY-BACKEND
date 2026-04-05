@@ -91,7 +91,7 @@ ${dto.travelersCount ? `Number of Travelers: ${dto.travelersCount}` : ''}
       additionalContext,
     });
 
-    const result = await agent.invoke({ messages });
+    const result = await agent.invoke({ messages } as any);
     const output = this.extractAgentOutput(result.messages);
 
     this.logger.log('LangChain agent execution completed');

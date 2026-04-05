@@ -1,0 +1,129 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String
+  password  String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  vehicles  Vehicle[]
+  trips     Trip[]
+
+  @@map("users")
+}
+
+model Vehicle {
+  id                 String      @id @default(cuid())
+  userId             String      @map("user_id")
+  name               String
+  type               VehicleType
+  brand              String?
+  model              String?
+  year               Int?
+  fuelType           FuelType    @map("fuel_type")
+  averageConsumption Float       @map("average_consumption")
+  tankCapacity       Float       @map("tank_capacity")
+  createdAt          DateTime    @default(now()) @map("created_at")
+  updatedAt          DateTime    @updatedAt @map("updated_at")
+
+  user               User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  trips              Trip[]
+
+  @@map("vehicles")
+}
+
+model Trip {
+  id                        String      @id @default(cuid())
+  userId                    String      @map("user_id")
+  vehicleId                 String      @map("vehicle_id")
+  name                      String
+  status                    TripStatus  @default(DRAFT)
+  origin                    String
+  destination               String
+  maxDrivingHoursPerDay     Float?      @map("max_driving_hours_per_day")
+  departurePreferredTime    String?     @map("departure_preferred_time")
+  drivingEndLimitTime       String?     @map("driving_end_limit_time")
+  mealBreakEnabled          Boolean     @default(true) @map("meal_break_enabled")
+  travelersCount            Int         @default(1) @map("travelers_count")
+  fuelPrice                 Float?      @map("fuel_price")
+  totalDistance             Float?      @map("total_distance")
+  estimatedDuration         Int?        @map("estimated_duration")
+  estimatedFuelCost         Float?      @map("estimated_fuel_cost")
+  estimatedTollCost         Float?      @map("estimated_toll_cost")
+  totalEstimatedCost        Float?      @map("total_estimated_cost")
+  rawPlanningJson           String?     @db.Text @map("raw_planning_json")
+  startDate                 DateTime?   @map("start_date")
+  endDate                   DateTime?   @map("end_date")
+  createdAt                 DateTime    @default(now()) @map("created_at")
+  updatedAt                 DateTime    @updatedAt @map("updated_at")
+
+  user                      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  vehicle                   Vehicle     @relation(fields: [vehicleId], references: [id], onDelete: Restrict)
+  segments                  TripSegment[]
+
+  @@map("trips")
+}
+
+model TripSegment {
+  id            String    @id @default(cuid())
+  tripId        String    @map("trip_id")
+  order         Int
+  type          SegmentType
+  startLocation String    @map("start_location")
+  endLocation   String?   @map("end_location")
+  distance      Float?
+  estimatedTime Int?      @map("estimated_time")
+  fuelCost      Float?    @map("fuel_cost")
+  tollCost      Float?    @map("toll_cost")
+  stopDuration  Int?      @map("stop_duration")
+  stopNote      String?   @map("stop_note")
+  startTime     DateTime? @map("start_time")
+  endTime       DateTime? @map("end_time")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  trip          Trip      @relation(fields: [tripId], references: [id], onDelete: Cascade)
+
+  @@map("trip_segments")
+}
+
+enum VehicleType {
+  CAR
+  VAN
+  TRAILER
+  MOTORHOME
+}
+
+enum FuelType {
+  GASOLINE
+  ETHANOL
+  DIESEL
+  ELECTRIC
+  HYBRID
+}
+
+enum TripStatus {
+  DRAFT
+  PLANNED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum SegmentType {
+  DRIVING
+  REST
+  MEAL
+  FUEL
+  SLEEP
+  SIGHTSEEING
+}
