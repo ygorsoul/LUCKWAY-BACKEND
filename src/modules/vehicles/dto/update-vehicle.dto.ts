@@ -36,4 +36,29 @@ export class UpdateVehicleDto {
   @IsNumber()
   @Min(1)
   tankCapacity?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0.1)
+  ethanolConsumption?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0.1)
+  electricConsumption?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  batteryCapacity?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0.1)
+  gnvConsumption?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  gnvTankCapacity?: number;
 }

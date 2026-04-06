@@ -8,12 +8,14 @@ datasource db {
 }
 
 model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  name      String
-  password  String
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  id                String   @id @default(cuid())
+  email             String   @unique
+  name              String
+  password          String
+  preferredCurrency String   @default("USD") @map("preferred_currency")
+  preferredLanguage String   @default("en") @map("preferred_language")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
 
   vehicles  Vehicle[]
   trips     Trip[]
@@ -22,21 +24,26 @@ model User {
 }
 
 model Vehicle {
-  id                 String      @id @default(cuid())
-  userId             String      @map("user_id")
-  name               String
-  type               VehicleType
-  brand              String?
-  model              String?
-  year               Int?
-  fuelType           FuelType    @map("fuel_type")
-  averageConsumption Float       @map("average_consumption")
-  tankCapacity       Float       @map("tank_capacity")
-  createdAt          DateTime    @default(now()) @map("created_at")
-  updatedAt          DateTime    @updatedAt @map("updated_at")
+  id                  String      @id @default(cuid())
+  userId              String      @map("user_id")
+  name                String
+  type                VehicleType
+  brand               String?
+  model               String?
+  year                Int?
+  fuelType            FuelType    @map("fuel_type")
+  averageConsumption  Float?      @map("average_consumption")
+  tankCapacity        Float?      @map("tank_capacity")
+  ethanolConsumption  Float?      @map("ethanol_consumption")
+  electricConsumption Float?      @map("electric_consumption")
+  batteryCapacity     Float?      @map("battery_capacity")
+  gnvConsumption      Float?      @map("gnv_consumption")
+  gnvTankCapacity     Float?      @map("gnv_tank_capacity")
+  createdAt           DateTime    @default(now()) @map("created_at")
+  updatedAt           DateTime    @updatedAt @map("updated_at")
 
-  user               User        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  trips              Trip[]
+  user                User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  trips               Trip[]
 
   @@map("vehicles")
 }
@@ -107,8 +114,10 @@ enum FuelType {
   GASOLINE
   ETHANOL
   DIESEL
+  FLEX
   ELECTRIC
   HYBRID
+  GNV
 }
 
 enum TripStatus {

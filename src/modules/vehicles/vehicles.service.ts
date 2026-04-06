@@ -9,8 +9,20 @@ export class VehiclesService {
   async create(userId: string, dto: CreateVehicleDto) {
     const vehicle = await this.db.vehicle.create({
       data: {
-        ...dto,
         userId,
+        name: dto.name,
+        type: dto.type,
+        brand: dto.brand,
+        model: dto.model,
+        year: dto.year,
+        fuelType: dto.fuelType,
+        averageConsumption: dto.averageConsumption,
+        tankCapacity: dto.tankCapacity,
+        ethanolConsumption: dto.ethanolConsumption,
+        electricConsumption: dto.electricConsumption,
+        batteryCapacity: dto.batteryCapacity,
+        gnvConsumption: dto.gnvConsumption,
+        gnvTankCapacity: dto.gnvTankCapacity,
       },
     });
 
@@ -46,7 +58,21 @@ export class VehiclesService {
 
     const vehicle = await this.db.vehicle.update({
       where: { id },
-      data: dto,
+      data: {
+        name: dto.name,
+        type: dto.type,
+        brand: dto.brand,
+        model: dto.model,
+        year: dto.year,
+        fuelType: dto.fuelType,
+        averageConsumption: dto.averageConsumption,
+        tankCapacity: dto.tankCapacity,
+        ethanolConsumption: dto.ethanolConsumption,
+        electricConsumption: dto.electricConsumption,
+        batteryCapacity: dto.batteryCapacity,
+        gnvConsumption: dto.gnvConsumption,
+        gnvTankCapacity: dto.gnvTankCapacity,
+      },
     });
 
     return vehicle;

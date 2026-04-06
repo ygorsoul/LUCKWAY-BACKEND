@@ -1,19 +1,7 @@
 import { IsEnum, IsNotEmpty, IsNumber, IsOptional, IsString, Min } from 'class-validator';
+import { VehicleType, FuelType } from '@prisma/client';
 
-export enum VehicleType {
-  CAR = 'CAR',
-  VAN = 'VAN',
-  TRAILER = 'TRAILER',
-  MOTORHOME = 'MOTORHOME',
-}
-
-export enum FuelType {
-  GASOLINE = 'GASOLINE',
-  ETHANOL = 'ETHANOL',
-  DIESEL = 'DIESEL',
-  ELECTRIC = 'ELECTRIC',
-  HYBRID = 'HYBRID',
-}
+export { VehicleType, FuelType };
 
 export class CreateVehicleDto {
   @IsNotEmpty()
@@ -41,13 +29,38 @@ export class CreateVehicleDto {
   @IsEnum(FuelType)
   fuelType: FuelType;
 
-  @IsNotEmpty()
+  @IsOptional()
   @IsNumber()
   @Min(0.1)
-  averageConsumption: number;
+  averageConsumption?: number;
 
-  @IsNotEmpty()
+  @IsOptional()
   @IsNumber()
   @Min(1)
-  tankCapacity: number;
+  tankCapacity?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0.1)
+  ethanolConsumption?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0.1)
+  electricConsumption?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  batteryCapacity?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0.1)
+  gnvConsumption?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  gnvTankCapacity?: number;
 }
