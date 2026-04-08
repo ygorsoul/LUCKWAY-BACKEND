@@ -48,11 +48,12 @@ export class TripPlanningController {
     @Query('origin') origin: string,
     @Query('destination') destination: string,
     @Query('waypoints') waypointsRaw?: string,
+    @Query('fuelType') fuelType?: string,
   ) {
     const waypoints = waypointsRaw
       ? waypointsRaw.split(',').map((w) => w.trim()).filter(Boolean)
       : [];
-    return this.fuelPriceService.suggestFuelPrices(origin, destination, waypoints);
+    return this.fuelPriceService.suggestFuelPrices(origin, destination, waypoints, fuelType as any);
   }
 
   @Get('autocomplete')

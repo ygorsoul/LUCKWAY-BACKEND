@@ -5,7 +5,7 @@ import { LangChainPlanningService } from './langchain/langchain-planning.service
 import { FuelPriceService } from './services/fuel-price.service';
 import { RouteProvider } from './interfaces/route-provider.interface';
 import { TollProvider } from './interfaces/toll-provider.interface';
-import { MockRouteProvider } from './providers/mock-route.provider';
+import { GoogleMapsRouteProvider } from './providers/google-maps-route.provider';
 import { MockTollProvider } from './providers/mock-toll.provider';
 
 @Module({
@@ -16,7 +16,7 @@ import { MockTollProvider } from './providers/mock-toll.provider';
     FuelPriceService,
     {
       provide: RouteProvider,
-      useClass: MockRouteProvider,
+      useClass: GoogleMapsRouteProvider,
     },
     {
       provide: TollProvider,

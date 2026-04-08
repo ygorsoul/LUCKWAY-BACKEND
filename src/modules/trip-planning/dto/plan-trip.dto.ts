@@ -8,7 +8,41 @@ import {
   IsString,
   Max,
   Min,
+  ValidateNested,
 } from 'class-validator';
+import { Type } from 'class-transformer';
+
+export class CustomStopDto {
+  @IsNotEmpty()
+  @IsString()
+  label: string;
+
+  @IsNumber()
+  @Min(0)
+  hoursAfterStart: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(5)
+  @Max(480)
+  durationMinutes?: number;
+}
+
+export class SleepStopDto {
+  @IsNotEmpty()
+  @IsString()
+  label: string;
+
+  @IsNumber()
+  @Min(1)
+  dayNumber: number; // Which night (1 = first night, 2 = second night, etc.)
+
+  @IsOptional()
+  @IsNumber()
+  @Min(60)
+  @Max(720)
+  durationMinutes?: number; // Sleep duration (default 480 = 8h)
+}
 
 export class PlanTripDto {
   @IsNotEmpty()
@@ -72,6 +106,12 @@ export class PlanTripDto {
 
   @IsOptional()
   @IsNumber()
+  @Min(0.5)
+  @Max(8)
+  restBreakIntervalHours?: number;
+
+  @IsOptional()
+  @IsNumber()
   @Min(1)
   travelersCount?: number;
 
@@ -88,4 +128,16 @@ export class PlanTripDto {
   @IsOptional()
   @IsString()
   departureDate?: string; // ISO date string
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CustomStopDto)
+  customStops?: CustomStopDto[];
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => SleepStopDto)
+  sleepStops?: SleepStopDto[];
 }

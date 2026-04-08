@@ -38,6 +38,29 @@ export class TripsController {
     return this.tripsService.update(user.id, id, dto);
   }
 
+  @Patch(':id/start')
+  startTrip(@GetUser() user: any, @Param('id') id: string) {
+    return this.tripsService.startTrip(user.id, id);
+  }
+
+  @Patch(':id/segments/:segmentId/check')
+  checkSegment(
+    @GetUser() user: any,
+    @Param('id') id: string,
+    @Param('segmentId') segmentId: string,
+  ) {
+    return this.tripsService.checkSegment(user.id, id, segmentId);
+  }
+
+  @Patch(':id/segments/:segmentId/uncheck')
+  uncheckSegment(
+    @GetUser() user: any,
+    @Param('id') id: string,
+    @Param('segmentId') segmentId: string,
+  ) {
+    return this.tripsService.uncheckSegment(user.id, id, segmentId);
+  }
+
   @Delete(':id')
   remove(@GetUser() user: any, @Param('id') id: string) {
     return this.tripsService.remove(user.id, id);

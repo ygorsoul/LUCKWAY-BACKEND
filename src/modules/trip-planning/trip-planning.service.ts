@@ -2,7 +2,7 @@ import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/commo
 import { DatabaseService } from '@/database/database.service';
 import { RouteProvider } from './interfaces/route-provider.interface';
 import { TollProvider } from './interfaces/toll-provider.interface';
-import { PlanTripDto } from './dto';
+import { PlanTripDto, CustomStopDto, SleepStopDto } from './dto';
 import { TripPlanningResult, TripSegment } from './types/planning.types';
 
 interface StopEvent {
@@ -27,9 +27,12 @@ interface BuildSegmentsConfig {
   dinnerEnabled: boolean;
   bathroomBreaksEnabled: boolean;
   stretchBreaksEnabled: boolean;
+  restBreakIntervalMinutes: number;
   fuelStopsCount: number;
   fuelCost: number;
   tollCost: number;
+  customStops: CustomStopDto[];
+  sleepStops: SleepStopDto[];
 }
 
 @Injectable()
@@ -100,6 +103,7 @@ export class TripPlanningService {
     const dinnerEnabled = dto.dinnerEnabled ?? false;
     const bathroomBreaksEnabled = dto.bathroomBreaksEnabled ?? false;
     const stretchBreaksEnabled = dto.stretchBreaksEnabled ?? false;
+    const restBreakIntervalMinutes = (dto.restBreakIntervalHours ?? 2) * 60;
 
     // Build segments
     const segments = this.buildSegments({
@@ -115,9 +119,12 @@ export class TripPlanningService {
       dinnerEnabled,
       bathroomBreaksEnabled,
       stretchBreaksEnabled,
+      restBreakIntervalMinutes,
       fuelStopsCount,
       fuelCost,
       tollCost: tolls.totalCost,
+      customStops: dto.customStops || [],
+      sleepStops: dto.sleepStops || [],
     });
 
     // Calculate summary
@@ -155,9 +162,12 @@ export class TripPlanningService {
       dinnerEnabled,
       bathroomBreaksEnabled,
       stretchBreaksEnabled,
+      restBreakIntervalMinutes,
       fuelStopsCount,
       fuelCost,
       tollCost,
+      customStops,
+      sleepStops,
     } = config;
 
     const stopEvents: StopEvent[] = [];
@@ -171,6 +181,16 @@ export class TripPlanningService {
 
     for (let day = 1; day < numberOfDays; day++) {
       const sleepAt = day * maxDrivingMinutesPerDay;
+
+      // Find user-defined sleep stop for this night
+      const userSleepStop = sleepStops.find((s) => s.dayNumber === day);
+      const sleepLabel = userSleepStop
+        ? userSleepStop.label
+        : `Pernoite - Dia ${day}`;
+      const sleepNote = userSleepStop
+        ? `Pernoite: ${userSleepStop.label}`
+        : 'Pernoite';
+      const sleepDuration = userSleepStop?.durationMinutes ?? 480;
 
       // Dinner just before sleep (same driving position, stops appear in order)
       if (dinnerEnabled) {
@@ -186,9 +206,9 @@ export class TripPlanningService {
       stopEvents.push({
         atDrivingMinute: sleepAt,
         type: 'SLEEP',
-        stopDuration: 480,
-        stopNote: 'Pernoite',
-        locationName: `Pernoite - Dia ${day}`,
+        stopDuration: sleepDuration,
+        stopNote: sleepNote,
+        locationName: sleepLabel,
       });
 
       // Breakfast just after sleep
@@ -216,7 +236,21 @@ export class TripPlanningService {
       });
     });
 
-    // 3. Meal stops: lunch and afternoon snack
+    // 3. Custom stops (user-defined)
+    for (const cs of customStops) {
+      const atMinute = cs.hoursAfterStart * 60;
+      if (atMinute < totalDurationMinutes) {
+        stopEvents.push({
+          atDrivingMinute: atMinute,
+          type: 'MEAL',
+          stopDuration: cs.durationMinutes ?? 30,
+          stopNote: cs.label,
+          locationName: cs.label,
+        });
+      }
+    }
+
+    // 4. Meal stops: lunch and afternoon snack
     if (lunchEnabled && totalDurationMinutes > 240) {
       const lunchAt = totalDurationMinutes / 2;
       if (!isNearEvent(lunchAt, 70)) {
@@ -253,7 +287,7 @@ export class TripPlanningService {
             ? 'Parada para banheiro'
             : 'Parada para alongamento';
 
-      let restAt = 120; // first stop after 2h driving
+      let restAt = restBreakIntervalMinutes;
       while (restAt < totalDurationMinutes - 30) {
         if (!isNearEvent(restAt, 40)) {
           stopEvents.push({
@@ -264,7 +298,7 @@ export class TripPlanningService {
             locationName: 'Parada de descanso',
           });
         }
-        restAt += 120;
+        restAt += restBreakIntervalMinutes;
       }
     }
 

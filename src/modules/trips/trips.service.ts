@@ -95,6 +95,18 @@ export class TripsService {
             model: true,
           },
         },
+        segments: {
+          orderBy: { order: 'asc' },
+          select: {
+            id: true,
+            order: true,
+            type: true,
+            startLocation: true,
+            endLocation: true,
+            stopNote: true,
+            completedAt: true,
+          },
+        },
         _count: {
           select: {
             segments: true,
@@ -147,6 +159,34 @@ export class TripsService {
     });
 
     return trip;
+  }
+
+  async startTrip(userId: string, id: string) {
+    await this.findOne(userId, id);
+    return this.db.trip.update({
+      where: { id },
+      data: { status: 'IN_PROGRESS', startDate: new Date() },
+      include: {
+        vehicle: true,
+        segments: { orderBy: { order: 'asc' } },
+      },
+    });
+  }
+
+  async checkSegment(userId: string, tripId: string, segmentId: string) {
+    await this.findOne(userId, tripId);
+    return this.db.tripSegment.update({
+      where: { id: segmentId },
+      data: { completedAt: new Date() },
+    });
+  }
+
+  async uncheckSegment(userId: string, tripId: string, segmentId: string) {
+    await this.findOne(userId, tripId);
+    return this.db.tripSegment.update({
+      where: { id: segmentId },
+      data: { completedAt: null },
+    });
   }
 
   async remove(userId: string, id: string) {

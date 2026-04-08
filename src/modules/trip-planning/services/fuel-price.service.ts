@@ -2,6 +2,28 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
 import { HumanMessage, SystemMessage } from '@langchain/core/messages';
 
+export type VehicleFuelType = 'GASOLINE' | 'ETHANOL' | 'DIESEL' | 'FLEX' | 'ELECTRIC' | 'HYBRID' | 'GNV';
+
+export const FUEL_UNIT: Record<VehicleFuelType, string> = {
+  GASOLINE: 'L',
+  ETHANOL: 'L',
+  DIESEL: 'L',
+  FLEX: 'L',
+  ELECTRIC: 'kWh',
+  HYBRID: 'L',
+  GNV: 'm³',
+};
+
+export const FUEL_LABEL_PT: Record<VehicleFuelType, string> = {
+  GASOLINE: 'Gasolina',
+  ETHANOL: 'Etanol',
+  DIESEL: 'Diesel',
+  FLEX: 'Gasolina (Flex)',
+  ELECTRIC: 'Energia Elétrica (kWh)',
+  HYBRID: 'Gasolina (Híbrido)',
+  GNV: 'GNV (m³)',
+};
+
 export interface FuelPriceSuggestion {
   country: string;
   pricePerLiter: number;
@@ -9,6 +31,7 @@ export interface FuelPriceSuggestion {
   currency: string;
   exchangeRate: number;
   fuelType: string;
+  unit: string;
   source: string;
   note?: string;
 }
@@ -18,9 +41,10 @@ export class FuelPriceService {
   private readonly logger = new Logger(FuelPriceService.name);
 
   private get model() {
+    const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
     return new ChatGoogleGenerativeAI({
-      model: 'gemini-3-flash-preview',
-      apiKey: process.env.GOOGLE_API_KEY,
+      model: process.env.GEMINI_MODEL,
+      apiKey,
       temperature: 0,
     });
   }
@@ -29,24 +53,36 @@ export class FuelPriceService {
     origin: string,
     destination: string,
     waypoints: string[] = [],
+    vehicleFuelType: VehicleFuelType = 'GASOLINE',
   ): Promise<FuelPriceSuggestion[]> {
-    const locations = [origin, ...waypoints, destination].filter(Boolean);
+    const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+    if (!apiKey) {
+      this.logger.warn('No Gemini API key configured, skipping fuel price suggestions');
+      return [];
+    }
 
-    // Step 1: Extract unique countries from locations
-    const countries = await this.extractCountries(locations);
-    this.logger.log(`Countries detected: ${countries.join(', ')}`);
+    try {
+      const locations = [origin, ...waypoints, destination].filter(Boolean);
 
-    if (!countries.length) return [];
+      // Step 1: Extract unique countries from locations
+      const countries = await this.extractCountries(locations);
+      this.logger.log(`Countries detected: ${countries.join(', ')}`);
 
-    // Step 2: Search prices for each country in parallel
-    const results = await Promise.allSettled(
-      countries.map((country) => this.fetchFuelPriceForCountry(country)),
-    );
+      if (!countries.length) return [];
 
-    return results
-      .filter((r): r is PromiseFulfilledResult<FuelPriceSuggestion> => r.status === 'fulfilled')
-      .map((r) => r.value)
-      .filter(Boolean);
+      // Step 2: Search prices for each country in parallel
+      const results = await Promise.allSettled(
+        countries.map((country) => this.fetchFuelPriceForCountry(country, vehicleFuelType)),
+      );
+
+      return results
+        .filter((r): r is PromiseFulfilledResult<FuelPriceSuggestion> => r.status === 'fulfilled')
+        .map((r) => r.value)
+        .filter(Boolean);
+    } catch (err: any) {
+      this.logger.warn(`Fuel price suggestion unavailable: ${err?.message ?? err}`);
+      return [];
+    }
   }
 
   async extractCountries(locations: string[]): Promise<string[]> {
@@ -69,11 +105,25 @@ Localidades: ${locations.join(', ')}`;
     ];
   }
 
-  private async fetchFuelPriceForCountry(country: string): Promise<FuelPriceSuggestion> {
-    const searchQuery = `preço gasolina ${country} 2025 por litro`;
+  private async fetchFuelPriceForCountry(
+    country: string,
+    vehicleFuelType: VehicleFuelType = 'GASOLINE',
+  ): Promise<FuelPriceSuggestion> {
+    const fuelTerms: Record<VehicleFuelType, string> = {
+      GASOLINE: 'gasolina',
+      ETHANOL: 'etanol álcool',
+      DIESEL: 'diesel',
+      FLEX: 'gasolina',
+      ELECTRIC: 'energia elétrica kWh recarga veículo elétrico',
+      HYBRID: 'gasolina',
+      GNV: 'GNV gás natural veicular m3',
+    };
+    const unit = FUEL_UNIT[vehicleFuelType];
+    const term = fuelTerms[vehicleFuelType];
+    const searchQuery = `preço ${term} ${country} 2025 por ${unit}`;
     const searchResults = await this.googleSearch(searchQuery);
 
-    return this.extractPriceFromSearchResults(country, searchResults, searchQuery);
+    return this.extractPriceFromSearchResults(country, searchResults, searchQuery, vehicleFuelType);
   }
 
   private async googleSearch(query: string): Promise<string> {
@@ -113,28 +163,34 @@ Localidades: ${locations.join(', ')}`;
     country: string,
     searchText: string,
     query: string,
+    vehicleFuelType: VehicleFuelType = 'GASOLINE',
   ): Promise<FuelPriceSuggestion> {
+    const unit = FUEL_UNIT[vehicleFuelType];
+    const fuelLabelPt = FUEL_LABEL_PT[vehicleFuelType];
+
     const systemPrompt = `Você é um assistente especializado em preços de combustíveis e câmbio de moedas.
-Analise os resultados de busca fornecidos e extraia o preço atual da gasolina/combustível mais comum.
+Analise os resultados de busca e extraia o preço atual de "${fuelLabelPt}" no país solicitado.
+A unidade de medida é ${unit}.
 Retorne APENAS um JSON válido no formato:
 {
-  "pricePerLiter": número_decimal (preço em moeda LOCAL do país),
+  "pricePerUnit": número_decimal (preço em moeda LOCAL do país por ${unit}),
   "currency": "código_moeda (ex: BRL, ARS, USD, EUR, CLP, PYG, UYU, PEN, BOB, COP)",
   "exchangeRate": número_decimal (taxa de câmbio: 1 unidade da moeda local = X reais BRL),
-  "priceInBrl": número_decimal (preço convertido para BRL = pricePerLiter * exchangeRate),
-  "fuelType": "nome do combustível em português (ex: Gasolina Comum, Gasolina Premium, Diesel)",
+  "priceInBrl": número_decimal (preço convertido para BRL = pricePerUnit * exchangeRate),
+  "fuelType": "nome exato do combustível em português",
   "note": "observação breve opcional"
 }
 Use a taxa de câmbio atual aproximada. Se o país for Brasil, exchangeRate = 1.
-Se não encontrar um preço confiável, use os valores médios conhecidos para o país.`;
+Se não encontrar preço confiável, use valores médios conhecidos para o país.`;
 
     const humanPrompt = `País: ${country}
+Combustível buscado: ${fuelLabelPt}
 Busca realizada: "${query}"
 
 Resultados da busca:
 ${searchText || '(sem resultados de busca disponíveis)'}
 
-Extraia o preço atual do combustível mais comum para ${country}.`;
+Extraia o preço atual de ${fuelLabelPt} para ${country}.`;
 
     const response = await this.model.invoke([
       new SystemMessage(systemPrompt),
@@ -146,7 +202,7 @@ Extraia o preço atual do combustível mais comum para ${country}.`;
     try {
       const jsonMatch = content.match(/\{[\s\S]*\}/);
       const parsed = JSON.parse(jsonMatch?.[0] || content);
-      const pricePerLiter = Number(parsed.pricePerLiter);
+      const pricePerLiter = Number(parsed.pricePerUnit ?? parsed.pricePerLiter);
       const currency = parsed.currency || 'BRL';
       const exchangeRate = Number(parsed.exchangeRate) || 1;
       const priceInBrl = Number(parsed.priceInBrl) || pricePerLiter * exchangeRate;
@@ -156,7 +212,8 @@ Extraia o preço atual do combustível mais comum para ${country}.`;
         priceInBrl,
         currency,
         exchangeRate,
-        fuelType: parsed.fuelType || 'Gasolina',
+        fuelType: parsed.fuelType || fuelLabelPt,
+        unit,
         source: searchText ? 'Google Search + IA' : 'Estimativa IA',
         note: parsed.note,
       };
@@ -168,7 +225,8 @@ Extraia o preço atual do combustível mais comum para ${country}.`;
         priceInBrl: 0,
         currency: 'BRL',
         exchangeRate: 1,
-        fuelType: 'Gasolina',
+        fuelType: fuelLabelPt,
+        unit,
         source: 'Estimativa IA',
         note: 'Não foi possível obter preço atualizado',
       };
