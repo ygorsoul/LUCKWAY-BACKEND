@@ -33,6 +33,7 @@ interface BuildSegmentsConfig {
   tollCost: number;
   customStops: CustomStopDto[];
   sleepStops: SleepStopDto[];
+  intermediateCities: string[]; // real city names at each day boundary (night 1, night 2…)
 }
 
 @Injectable()
@@ -105,6 +106,20 @@ export class TripPlanningService {
     const stretchBreaksEnabled = dto.stretchBreaksEnabled ?? false;
     const restBreakIntervalMinutes = (dto.restBreakIntervalHours ?? 2) * 60;
 
+    // Determine number of driving days to know how many overnight cities to fetch
+    const numberOfDays = Math.ceil(route.durationMinutes / maxDrivingMinutesPerDay);
+    const numberOfNights = numberOfDays - 1;
+
+    // Fetch real city names at each overnight boundary (fractions along the route)
+    const sleepFractions = Array.from(
+      { length: numberOfNights },
+      (_, i) => (i + 1) / numberOfDays,
+    );
+    const intermediateCities =
+      numberOfNights > 0
+        ? await this.routeProvider.getIntermediateCities(dto.origin, dto.destination, sleepFractions)
+        : [];
+
     // Build segments
     const segments = this.buildSegments({
       origin: dto.origin,
@@ -125,6 +140,7 @@ export class TripPlanningService {
       tollCost: tolls.totalCost,
       customStops: dto.customStops || [],
       sleepStops: dto.sleepStops || [],
+      intermediateCities,
     });
 
     // Calculate summary
@@ -168,6 +184,7 @@ export class TripPlanningService {
       tollCost,
       customStops,
       sleepStops,
+      intermediateCities,
     } = config;
 
     const stopEvents: StopEvent[] = [];
@@ -184,12 +201,9 @@ export class TripPlanningService {
 
       // Find user-defined sleep stop for this night
       const userSleepStop = sleepStops.find((s) => s.dayNumber === day);
-      const sleepLabel = userSleepStop
-        ? userSleepStop.label
-        : `Pernoite - Dia ${day}`;
-      const sleepNote = userSleepStop
-        ? `Pernoite: ${userSleepStop.label}`
-        : 'Pernoite';
+      const resolvedCity = userSleepStop?.label ?? intermediateCities[day - 1] ?? `Pernoite - Dia ${day}`;
+      const sleepLabel = resolvedCity;
+      const sleepNote = `Pernoite em ${resolvedCity}`;
       const sleepDuration = userSleepStop?.durationMinutes ?? 480;
 
       // Dinner just before sleep (same driving position, stops appear in order)
@@ -290,12 +304,13 @@ export class TripPlanningService {
       let restAt = restBreakIntervalMinutes;
       while (restAt < totalDurationMinutes - 30) {
         if (!isNearEvent(restAt, 40)) {
+          const approxKm = Math.round((restAt / totalDurationMinutes) * totalDistanceKm);
           stopEvents.push({
             atDrivingMinute: restAt,
             type: 'REST',
             stopDuration: 15,
             stopNote: restNote,
-            locationName: 'Parada de descanso',
+            locationName: `~Km ${approxKm}`,
           });
         }
         restAt += restBreakIntervalMinutes;
@@ -331,18 +346,17 @@ export class TripPlanningService {
       // Add driving segment only if meaningful (> 1 min)
       if (drivingDuration > 1) {
         const fraction = drivingDuration / totalDurationMinutes;
-        const toLocation = event.isWaypoint ? event.locationName : 'Parada intermediária';
         segments.push({
           order: order++,
           type: 'DRIVING',
           startLocation: prevLocation,
-          endLocation: toLocation,
+          endLocation: event.locationName,
           distance: totalDistanceKm * fraction,
           estimatedTime: Math.round(drivingDuration),
           fuelCost: fuelCost * fraction,
           tollCost: tollCost * fraction,
         });
-        prevLocation = event.isWaypoint ? event.locationName : 'Em rota';
+        prevLocation = event.locationName;
       }
 
       prevDrivingMinute = event.atDrivingMinute;

@@ -7,6 +7,14 @@ import {
 
 @Injectable()
 export class MockRouteProvider implements RouteProvider {
+  async getIntermediateCities(
+    _origin: string,
+    _destination: string,
+    fractions: number[],
+  ): Promise<string[]> {
+    return fractions.map((_, i) => `Pernoite - Dia ${i + 1}`);
+  }
+
   async estimateRoute(input: RouteEstimateInput): Promise<RouteEstimateOutput> {
     // Simple heuristic: hash the strings to get consistent values
     const hash = this.hashString(input.origin + input.destination);
