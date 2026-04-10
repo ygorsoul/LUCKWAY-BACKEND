@@ -5,6 +5,7 @@ import { POIsService } from './pois.service';
 import { POIBookmarksService } from './poi-bookmarks.service';
 import { RoutePOIIntegrationService } from './route-poi-integration.service';
 import { OverpassProvider } from './providers/overpass.provider';
+import { GeocodingProvider } from './providers/geocoding.provider';
 
 @Module({
   controllers: [POIsController, POIBookmarksController],
@@ -13,6 +14,7 @@ import { OverpassProvider } from './providers/overpass.provider';
     POIBookmarksService,
     RoutePOIIntegrationService,
     OverpassProvider,
+    GeocodingProvider,
   ],
   exports: [POIsService, POIBookmarksService, RoutePOIIntegrationService],
 })

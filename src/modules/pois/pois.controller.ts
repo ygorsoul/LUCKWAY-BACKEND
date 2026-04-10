@@ -9,12 +9,17 @@ import {
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { POIsService } from './pois.service';
 import { SearchPOIsDto } from './dto/search-pois.dto';
+import { GeocodeDto } from './dto/geocode.dto';
 import { POI } from './types/poi.types';
+import { GeocodingProvider } from './providers/geocoding.provider';
 
 @Controller('pois')
 @UseGuards(JwtAuthGuard)
 export class POIsController {
-  constructor(private readonly poisService: POIsService) {}
+  constructor(
+    private readonly poisService: POIsService,
+    private readonly geocodingProvider: GeocodingProvider,
+  ) {}
 
   /**
    * Busca POIs de infraestrutura de apoio para viajantes
@@ -45,5 +50,16 @@ export class POIsController {
       dto.lng,
       dto.radiusInMeters || 5000,
     );
+  }
+
+  /**
+   * Geocodifica um endereço (cidade, estado, etc) em coordenadas lat/lng
+   * @param dto Endereço a ser geocodificado
+   * @returns Coordenadas e endereço formatado
+   */
+  @Post('geocode')
+  @HttpCode(HttpStatus.OK)
+  async geocode(@Body() dto: GeocodeDto) {
+    return this.geocodingProvider.geocode(dto.address);
   }
 }
