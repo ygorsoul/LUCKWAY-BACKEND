@@ -1,0 +1,87 @@
+###
+# TESTES DO MÓDULO POIs
+# Use a extensão REST Client do VS Code ou curl para testar
+###
+
+# Variáveis
+@baseUrl = http://localhost:3000
+@token = SEU_JWT_TOKEN_AQUI
+
+### 1. Login (obter token JWT)
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "seu-email@example.com",
+  "password": "sua-senha"
+}
+
+### 2. Buscar POIs em São Paulo (Praça da Sé)
+POST {{baseUrl}}/pois/search
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "lat": -23.5505,
+  "lng": -46.6333,
+  "radiusInMeters": 5000
+}
+
+### 3. Buscar POIs no Rio de Janeiro (Cristo Redentor)
+POST {{baseUrl}}/pois/search-at-destination
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "lat": -22.9519,
+  "lng": -43.2105,
+  "radiusInMeters": 10000
+}
+
+### 4. Buscar POIs em Florianópolis (Lagoa da Conceição)
+POST {{baseUrl}}/pois/search
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "lat": -27.6006,
+  "lng": -48.4638,
+  "radiusInMeters": 8000
+}
+
+### 5. Buscar POIs em raio pequeno (2km)
+POST {{baseUrl}}/pois/search
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "lat": -23.5505,
+  "lng": -46.6333,
+  "radiusInMeters": 2000
+}
+
+### 6. Buscar POIs em raio grande (20km)
+POST {{baseUrl}}/pois/search
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "lat": -23.5505,
+  "lng": -46.6333,
+  "radiusInMeters": 20000
+}
+
+###
+# EXEMPLOS DE CURL
+###
+
+# Login
+# curl -X POST http://localhost:3000/auth/login \
+#   -H "Content-Type: application/json" \
+#   -d '{"email":"seu-email@example.com","password":"sua-senha"}'
+
+# Buscar POIs
+# curl -X POST http://localhost:3000/pois/search \
+#   -H "Content-Type: application/json" \
+#   -H "Authorization: Bearer SEU_TOKEN" \
+#   -d '{"lat":-23.5505,"lng":-46.6333,"radiusInMeters":5000}'

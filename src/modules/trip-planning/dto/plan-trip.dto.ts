@@ -6,11 +6,25 @@ import {
   IsObject,
   IsOptional,
   IsString,
+  IsEnum,
   Max,
   Min,
   ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
+
+export enum MealPreference {
+  RESTAURANT = 'RESTAURANT',
+  SELF_COOK = 'SELF_COOK',
+  MIXED = 'MIXED',
+}
+
+export enum SleepPreference {
+  HOTEL = 'HOTEL',
+  CAMPING = 'CAMPING',
+  MOTORHOME = 'MOTORHOME',
+  MIXED = 'MIXED',
+}
 
 export class CustomStopDto {
   @IsNotEmpty()
@@ -140,4 +154,19 @@ export class PlanTripDto {
   @ValidateNested({ each: true })
   @Type(() => SleepStopDto)
   sleepStops?: SleepStopDto[];
+
+  // Preferências de refeição
+  @IsOptional()
+  @IsEnum(MealPreference)
+  mealPreference?: MealPreference;
+
+  // Preferências de pernoite
+  @IsOptional()
+  @IsEnum(SleepPreference)
+  sleepPreference?: SleepPreference;
+
+  // Se deve sugerir POIs automaticamente
+  @IsOptional()
+  @IsBoolean()
+  autoSuggestPOIs?: boolean;
 }

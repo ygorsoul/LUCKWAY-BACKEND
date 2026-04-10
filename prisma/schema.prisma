@@ -17,8 +17,10 @@ model User {
   createdAt         DateTime @default(now()) @map("created_at")
   updatedAt         DateTime @updatedAt @map("updated_at")
 
-  vehicles  Vehicle[]
-  trips     Trip[]
+  vehicles     Vehicle[]
+  trips        Trip[]
+  poiBookmarks POIBookmark[]
+  poiComments  POIComment[]
 
   @@map("users")
 }
@@ -49,57 +51,69 @@ model Vehicle {
 }
 
 model Trip {
-  id                        String      @id @default(cuid())
-  userId                    String      @map("user_id")
-  vehicleId                 String      @map("vehicle_id")
+  id                        String           @id @default(cuid())
+  userId                    String           @map("user_id")
+  vehicleId                 String           @map("vehicle_id")
   name                      String
-  status                    TripStatus  @default(DRAFT)
+  status                    TripStatus       @default(DRAFT)
   origin                    String
   destination               String
-  maxDrivingHoursPerDay     Float?      @map("max_driving_hours_per_day")
-  departurePreferredTime    String?     @map("departure_preferred_time")
-  drivingEndLimitTime       String?     @map("driving_end_limit_time")
-  mealBreakEnabled          Boolean     @default(true) @map("meal_break_enabled")
-  travelersCount            Int         @default(1) @map("travelers_count")
-  fuelPrice                 Float?      @map("fuel_price")
-  totalDistance             Float?      @map("total_distance")
-  estimatedDuration         Int?        @map("estimated_duration")
-  estimatedFuelCost         Float?      @map("estimated_fuel_cost")
-  estimatedTollCost         Float?      @map("estimated_toll_cost")
-  totalEstimatedCost        Float?      @map("total_estimated_cost")
-  rawPlanningJson           String?     @db.Text @map("raw_planning_json")
-  startDate                 DateTime?   @map("start_date")
-  endDate                   DateTime?   @map("end_date")
-  createdAt                 DateTime    @default(now()) @map("created_at")
-  updatedAt                 DateTime    @updatedAt @map("updated_at")
+  maxDrivingHoursPerDay     Float?           @map("max_driving_hours_per_day")
+  departurePreferredTime    String?          @map("departure_preferred_time")
+  drivingEndLimitTime       String?          @map("driving_end_limit_time")
+  mealBreakEnabled          Boolean          @default(true) @map("meal_break_enabled")
+  travelersCount            Int              @default(1) @map("travelers_count")
+  fuelPrice                 Float?           @map("fuel_price")
+  totalDistance             Float?           @map("total_distance")
+  estimatedDuration         Int?             @map("estimated_duration")
+  estimatedFuelCost         Float?           @map("estimated_fuel_cost")
+  estimatedTollCost         Float?           @map("estimated_toll_cost")
+  totalEstimatedCost        Float?           @map("total_estimated_cost")
+  rawPlanningJson           String?          @db.Text @map("raw_planning_json")
+  startDate                 DateTime?        @map("start_date")
+  endDate                   DateTime?        @map("end_date")
 
-  user                      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  vehicle                   Vehicle     @relation(fields: [vehicleId], references: [id], onDelete: Restrict)
+  // Preferências de viagem
+  mealPreference            MealPreference   @default(RESTAURANT) @map("meal_preference")
+  sleepPreference           SleepPreference  @default(HOTEL) @map("sleep_preference")
+  autoSuggestPOIs           Boolean          @default(true) @map("auto_suggest_pois")
+
+  createdAt                 DateTime         @default(now()) @map("created_at")
+  updatedAt                 DateTime         @updatedAt @map("updated_at")
+
+  user                      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  vehicle                   Vehicle          @relation(fields: [vehicleId], references: [id], onDelete: Restrict)
   segments                  TripSegment[]
 
   @@map("trips")
 }
 
 model TripSegment {
-  id            String    @id @default(cuid())
-  tripId        String    @map("trip_id")
+  id            String      @id @default(cuid())
+  tripId        String      @map("trip_id")
   order         Int
   type          SegmentType
-  startLocation String    @map("start_location")
-  endLocation   String?   @map("end_location")
+  startLocation String      @map("start_location")
+  endLocation   String?     @map("end_location")
   distance      Float?
-  estimatedTime Int?      @map("estimated_time")
-  fuelCost      Float?    @map("fuel_cost")
-  tollCost      Float?    @map("toll_cost")
-  stopDuration  Int?      @map("stop_duration")
-  stopNote      String?   @map("stop_note")
-  startTime     DateTime? @map("start_time")
-  endTime       DateTime? @map("end_time")
-  completedAt   DateTime? @map("completed_at")
-  createdAt     DateTime  @default(now()) @map("created_at")
-  updatedAt     DateTime  @updatedAt @map("updated_at")
+  estimatedTime Int?        @map("estimated_time")
+  fuelCost      Float?      @map("fuel_cost")
+  tollCost      Float?      @map("toll_cost")
+  stopDuration  Int?        @map("stop_duration")
+  stopNote      String?     @map("stop_note")
+  startTime     DateTime?   @map("start_time")
+  endTime       DateTime?   @map("end_time")
+  completedAt   DateTime?   @map("completed_at")
 
-  trip          Trip      @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  // POI vinculado (se aplicável)
+  linkedPoiId   String?     @map("linked_poi_id")  // ID do POI (do OpenStreetMap)
+  poiData       String?     @db.Text @map("poi_data") // JSON com dados completos do POI
+  isDayEndpoint Boolean     @default(false) @map("is_day_endpoint") // Se é destino final do dia
+
+  createdAt     DateTime    @default(now()) @map("created_at")
+  updatedAt     DateTime    @updatedAt @map("updated_at")
+
+  trip          Trip        @relation(fields: [tripId], references: [id], onDelete: Cascade)
 
   @@map("trip_segments")
 }
@@ -136,4 +150,66 @@ enum SegmentType {
   FUEL
   SLEEP
   SIGHTSEEING
+  SHOWER
+  LAUNDRY
+}
+
+enum MealPreference {
+  RESTAURANT      // Comer em restaurante
+  SELF_COOK       // Cozinhar (própria comida)
+  MIXED           // Misto (algumas refeições restaurante, outras cozinhar)
+}
+
+enum SleepPreference {
+  HOTEL           // Hotel/pousada
+  CAMPING         // Camping
+  MOTORHOME       // Dormir no motorhome/van (estacionamento)
+  MIXED           // Misto
+}
+
+model POIBookmark {
+  id          String   @id @default(cuid())
+  userId      String   @map("user_id")
+
+  // Dados do POI
+  poiId       String   @map("poi_id")  // ID do OSM
+  poiName     String   @map("poi_name")
+  poiType     String   @map("poi_type") // Pernoite, Banho, etc
+  latitude    Float
+  longitude   Float
+  poiData     String   @db.Text @map("poi_data") // JSON completo do POI
+
+  // Metadados
+  tags        String[] // Tags personalizadas do usuário
+  notes       String?  @db.Text // Anotações pessoais
+  rating      Int?     // Avaliação pessoal (1-5)
+
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, poiId])
+  @@map("poi_bookmarks")
+}
+
+model POIComment {
+  id          String   @id @default(cuid())
+  userId      String   @map("user_id")
+
+  // Dados do POI
+  poiId       String   @map("poi_id")  // ID do OSM
+  poiName     String   @map("poi_name")
+
+  // Comentário
+  comment     String   @db.Text
+  rating      Int?     // Avaliação (1-5)
+  visitDate   DateTime? @map("visit_date")
+
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("poi_comments")
 }

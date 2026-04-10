@@ -8,6 +8,7 @@ import { UsersModule } from './modules/users/users.module';
 import { VehiclesModule } from './modules/vehicles/vehicles.module';
 import { TripsModule } from './modules/trips/trips.module';
 import { TripPlanningModule } from './modules/trip-planning/trip-planning.module';
+import { POIsModule } from './modules/pois/pois.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { TripPlanningModule } from './modules/trip-planning/trip-planning.module
     VehiclesModule,
     TripPlanningModule,
     TripsModule,
+    POIsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

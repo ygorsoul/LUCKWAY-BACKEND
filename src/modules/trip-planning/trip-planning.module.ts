@@ -7,8 +7,10 @@ import { RouteProvider } from './interfaces/route-provider.interface';
 import { TollProvider } from './interfaces/toll-provider.interface';
 import { GoogleMapsRouteProvider } from './providers/google-maps-route.provider';
 import { MockTollProvider } from './providers/mock-toll.provider';
+import { POIsModule } from '../pois/pois.module';
 
 @Module({
+  imports: [POIsModule],
   controllers: [TripPlanningController],
   providers: [
     TripPlanningService,
