@@ -1,6 +1,8 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { POIsService } from './pois.service';
 import { POI, POIServiceType } from './types/poi.types';
+import { DatabaseService } from '@/database/database.service';
+import { LinkPOIToSegmentDto } from './dto';
 
 export interface RoutePoint {
   lat: number;
@@ -30,7 +32,10 @@ export interface POISuggestion {
 export class RoutePOIIntegrationService {
   private readonly logger = new Logger(RoutePOIIntegrationService.name);
 
-  constructor(private readonly poisService: POIsService) {}
+  constructor(
+    private readonly poisService: POIsService,
+    private readonly db: DatabaseService,
+  ) {}
 
   /**
    * Identifica pontos estratégicos ao longo da rota
@@ -278,5 +283,156 @@ export class RoutePOIIntegrationService {
         distance: poi.distance,
       }),
     };
+  }
+
+  /**
+   * Vincula um POI a um segmento de viagem (ou cria novo segmento)
+   * @param dto Dados do POI e viagem
+   * @param userId ID do usuário autenticado
+   * @returns Segmento atualizado ou criado
+   */
+  async linkPOIToTrip(dto: LinkPOIToSegmentDto, userId: string) {
+    this.logger.log(`Vinculando POI ${dto.poiId} à viagem ${dto.tripId} - usuário ${userId}`);
+
+    // Verificar se a viagem existe e pertence ao usuário
+    const trip = await this.db.trip.findUnique({
+      where: { id: dto.tripId },
+      include: { segments: true },
+    });
+
+    if (!trip) {
+      throw new NotFoundException('Viagem não encontrada');
+    }
+
+    if (trip.userId !== userId) {
+      throw new ForbiddenException('Você não tem permissão para modificar esta viagem');
+    }
+
+    const poiData = JSON.stringify(dto.poiData);
+
+    // Se segmentId foi fornecido, atualiza o segmento existente
+    if (dto.segmentId) {
+      const segment = await this.db.tripSegment.findUnique({
+        where: { id: dto.segmentId },
+      });
+
+      if (!segment || segment.tripId !== dto.tripId) {
+        throw new NotFoundException('Segmento não encontrado nesta viagem');
+      }
+
+      return this.db.tripSegment.update({
+        where: { id: dto.segmentId },
+        data: {
+          linkedPoiId: dto.poiId,
+          poiData,
+          isDayEndpoint: dto.isDayEndpoint ?? segment.isDayEndpoint,
+          stopDuration: dto.stopDuration ?? segment.stopDuration,
+          stopNote: dto.stopNote ?? segment.stopNote,
+        },
+      });
+    }
+
+    // Senão, cria um novo segmento
+    const segmentType = dto.segmentType || this.inferSegmentTypeFromPOI(dto.poiData);
+    const lastSegment = trip.segments.sort((a, b) => b.order - a.order)[0];
+    const nextOrder = lastSegment ? lastSegment.order + 1 : 1;
+
+    // Extrair coordenadas do POI
+    const poiCoordinates = (dto.poiData as any).coordinates;
+    if (!poiCoordinates?.lat || !poiCoordinates?.lng) {
+      throw new BadRequestException('POI inválido: coordenadas ausentes');
+    }
+
+    const location = `${poiCoordinates.lat},${poiCoordinates.lng}`;
+
+    return this.db.tripSegment.create({
+      data: {
+        tripId: dto.tripId,
+        order: nextOrder,
+        type: segmentType,
+        startLocation: location,
+        endLocation: location,
+        linkedPoiId: dto.poiId,
+        poiData,
+        isDayEndpoint: dto.isDayEndpoint ?? (segmentType === 'SLEEP'),
+        stopDuration: dto.stopDuration ?? this.getDefaultStopDuration(segmentType),
+        stopNote: dto.stopNote,
+      },
+    });
+  }
+
+  /**
+   * Desvincula um POI de um segmento de viagem
+   * @param segmentId ID do segmento
+   * @param userId ID do usuário autenticado
+   * @returns Mensagem de sucesso
+   */
+  async unlinkPOIFromTrip(segmentId: string, userId: string) {
+    this.logger.log(`Desvinculando POI do segmento ${segmentId} - usuário ${userId}`);
+
+    // Buscar segmento e verificar permissões
+    const segment = await this.db.tripSegment.findUnique({
+      where: { id: segmentId },
+      include: { trip: true },
+    });
+
+    if (!segment) {
+      throw new NotFoundException('Segmento não encontrado');
+    }
+
+    if (segment.trip.userId !== userId) {
+      throw new ForbiddenException('Você não tem permissão para modificar esta viagem');
+    }
+
+    // Atualizar segmento removendo POI
+    await this.db.tripSegment.update({
+      where: { id: segmentId },
+      data: {
+        linkedPoiId: null,
+        poiData: null,
+      },
+    });
+
+    return { message: 'POI desvinculado com sucesso' };
+  }
+
+  /**
+   * Infere o tipo de segmento baseado no tipo de POI
+   */
+  private inferSegmentTypeFromPOI(poiData: any): 'SLEEP' | 'SHOWER' | 'LAUNDRY' | 'REST' {
+    const serviceType = poiData.serviceType;
+
+    switch (serviceType) {
+      case 'Pernoite':
+        return 'SLEEP';
+      case 'Banho':
+        return 'SHOWER';
+      case 'Lavar Roupa':
+        return 'LAUNDRY';
+      default:
+        return 'REST';
+    }
+  }
+
+  /**
+   * Retorna duração padrão em minutos baseado no tipo de segmento
+   */
+  private getDefaultStopDuration(segmentType: string): number {
+    switch (segmentType) {
+      case 'SLEEP':
+        return 480; // 8 horas
+      case 'MEAL':
+        return 60; // 1 hora
+      case 'REST':
+        return 30; // 30 minutos
+      case 'SHOWER':
+        return 30; // 30 minutos
+      case 'LAUNDRY':
+        return 90; // 1.5 horas
+      case 'FUEL':
+        return 15; // 15 minutos
+      default:
+        return 30;
+    }
   }
 }

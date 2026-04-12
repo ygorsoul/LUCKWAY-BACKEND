@@ -5,13 +5,16 @@ import {
   UseGuards,
   HttpCode,
   HttpStatus,
+  Delete,
+  Param,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { GetUser } from '../auth/decorators/get-user.decorator';
 import { POIsService } from './pois.service';
-import { SearchPOIsDto } from './dto/search-pois.dto';
-import { GeocodeDto } from './dto/geocode.dto';
+import { SearchPOIsDto, GeocodeDto, LinkPOIToSegmentDto } from './dto';
 import { POI } from './types/poi.types';
 import { GeocodingProvider } from './providers/geocoding.provider';
+import { RoutePOIIntegrationService } from './route-poi-integration.service';
 
 @Controller('pois')
 @UseGuards(JwtAuthGuard)
@@ -19,6 +22,7 @@ export class POIsController {
   constructor(
     private readonly poisService: POIsService,
     private readonly geocodingProvider: GeocodingProvider,
+    private readonly routePOIIntegrationService: RoutePOIIntegrationService,
   ) {}
 
   /**
@@ -61,5 +65,29 @@ export class POIsController {
   @HttpCode(HttpStatus.OK)
   async geocode(@Body() dto: GeocodeDto) {
     return this.geocodingProvider.geocode(dto.address);
+  }
+
+  /**
+   * Vincula um POI a um segmento de viagem (ou cria novo segmento)
+   * @param dto Dados do POI e viagem
+   * @param userId ID do usuário autenticado
+   * @returns Segmento atualizado ou criado
+   */
+  @Post('link-to-trip')
+  @HttpCode(HttpStatus.OK)
+  async linkPOIToTrip(@Body() dto: LinkPOIToSegmentDto, @GetUser('id') userId: string) {
+    return this.routePOIIntegrationService.linkPOIToTrip(dto, userId);
+  }
+
+  /**
+   * Desvincula um POI de um segmento de viagem
+   * @param segmentId ID do segmento
+   * @param userId ID do usuário autenticado
+   * @returns Mensagem de sucesso
+   */
+  @Delete('unlink-from-trip/:segmentId')
+  @HttpCode(HttpStatus.OK)
+  async unlinkPOIFromTrip(@Param('segmentId') segmentId: string, @GetUser('id') userId: string) {
+    return this.routePOIIntegrationService.unlinkPOIFromTrip(segmentId, userId);
   }
 }
