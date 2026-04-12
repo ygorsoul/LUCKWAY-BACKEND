@@ -7,16 +7,22 @@ import {
   Param,
   Delete,
   UseGuards,
+  HttpCode,
+  HttpStatus,
 } from '@nestjs/common';
 import { TripsService } from './trips.service';
 import { CreateTripDto, UpdateTripDto } from './dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { GetUser } from '../auth/decorators/get-user.decorator';
+import { RoutePOIIntegrationService } from '../pois/route-poi-integration.service';
 
 @Controller('trips')
 @UseGuards(JwtAuthGuard)
 export class TripsController {
-  constructor(private readonly tripsService: TripsService) {}
+  constructor(
+    private readonly tripsService: TripsService,
+    private readonly routePOIIntegrationService: RoutePOIIntegrationService,
+  ) {}
 
   @Post()
   create(@GetUser() user: any, @Body() dto: CreateTripDto) {
@@ -64,5 +70,17 @@ export class TripsController {
   @Delete(':id')
   remove(@GetUser() user: any, @Param('id') id: string) {
     return this.tripsService.remove(user.id, id);
+  }
+
+  /**
+   * Sugere POIs automaticamente baseado na rota planejada
+   * @param user Usuário autenticado
+   * @param id ID da viagem
+   * @returns Sugestões de POIs organizadas por prioridade
+   */
+  @Post(':id/suggest-pois')
+  @HttpCode(HttpStatus.OK)
+  async suggestPOIs(@GetUser() user: any, @Param('id') id: string) {
+    return this.routePOIIntegrationService.suggestPOIsForTrip(user.id, id);
   }
 }

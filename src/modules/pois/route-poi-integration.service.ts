@@ -2,7 +2,7 @@ import { Injectable, Logger, NotFoundException, ForbiddenException, BadRequestEx
 import { POIsService } from './pois.service';
 import { POI, POIServiceType } from './types/poi.types';
 import { DatabaseService } from '@/database/database.service';
-import { LinkPOIToSegmentDto } from './dto';
+import { LinkPOIToSegmentDto, POISuggestionResponseDto } from './dto';
 
 export interface RoutePoint {
   lat: number;
@@ -434,5 +434,128 @@ export class RoutePOIIntegrationService {
       default:
         return 30;
     }
+  }
+
+  /**
+   * Sugere POIs automaticamente para uma viagem planejada
+   * @param userId ID do usuário
+   * @param tripId ID da viagem
+   * @returns Sugestões de POIs organizadas por prioridade
+   */
+  async suggestPOIsForTrip(userId: string, tripId: string): Promise<POISuggestionResponseDto> {
+    this.logger.log(`Gerando sugestões de POIs para viagem ${tripId} - usuário ${userId}`);
+
+    // Buscar viagem com segments
+    const trip = await this.db.trip.findUnique({
+      where: { id: tripId },
+      include: { segments: { orderBy: { order: 'asc' } } },
+    });
+
+    if (!trip) {
+      throw new NotFoundException('Viagem não encontrada');
+    }
+
+    if (trip.userId !== userId) {
+      throw new ForbiddenException('Você não tem permissão para acessar esta viagem');
+    }
+
+    const segments = trip.segments ?? [];
+    if (segments.length === 0) {
+      throw new BadRequestException('Viagem não possui segmentos planejados');
+    }
+
+    // Extrair RoutePoints dos segments de direção
+    const routePoints: RoutePoint[] = [];
+    let accumulatedDistance = 0;
+
+    for (const segment of segments) {
+      if (segment.type === 'DRIVING' && segment.distance) {
+        // Tentar extrair coordenadas do startLocation
+        const coords = this.extractCoordinatesFromLocation(segment.startLocation);
+        if (coords) {
+          routePoints.push({
+            lat: coords.lat,
+            lng: coords.lng,
+            cityName: segment.startLocation,
+            distanceFromStart: accumulatedDistance,
+          });
+        }
+
+        accumulatedDistance += segment.distance;
+
+        // Adicionar endLocation se for diferente
+        if (segment.endLocation && segment.endLocation !== segment.startLocation) {
+          const endCoords = this.extractCoordinatesFromLocation(segment.endLocation);
+          if (endCoords) {
+            routePoints.push({
+              lat: endCoords.lat,
+              lng: endCoords.lng,
+              cityName: segment.endLocation,
+              distanceFromStart: accumulatedDistance,
+            });
+          }
+        }
+      }
+    }
+
+    if (routePoints.length === 0) {
+      throw new BadRequestException('Não foi possível extrair pontos da rota');
+    }
+
+    const totalDistance = trip.totalDistance ?? accumulatedDistance;
+    const maxDrivingHours = trip.maxDrivingHoursPerDay ?? 8;
+
+    // Identificar pontos estratégicos
+    const { dayEndPoints, intermediateStops } = this.identifyStrategicPoints(
+      routePoints,
+      totalDistance,
+      maxDrivingHours,
+    );
+
+    // Buscar POIs para os pontos estratégicos
+    const suggestions = await this.findPOIsForRoute(
+      dayEndPoints,
+      intermediateStops,
+      trip.mealPreference ?? 'RESTAURANT',
+      trip.sleepPreference ?? 'HOTEL',
+    );
+
+    // Contar sugestões por categoria
+    const sleepSuggestions = suggestions.filter((s) => s.category === 'sleep').length;
+    const mealSuggestions = suggestions.filter((s) => s.category === 'meal').length;
+    const showerSuggestions = suggestions.filter((s) => s.category === 'shower').length;
+    const laundrySuggestions = suggestions.filter((s) => s.category === 'laundry').length;
+    const waterSuggestions = suggestions.filter((s) => s.category === 'water').length;
+
+    this.logger.log(`Geradas ${suggestions.length} sugestões de POIs para viagem ${tripId}`);
+
+    return {
+      suggestions,
+      totalSuggestions: suggestions.length,
+      sleepSuggestions,
+      mealSuggestions,
+      showerSuggestions,
+      laundrySuggestions,
+      waterSuggestions,
+    };
+  }
+
+  /**
+   * Extrai coordenadas de uma string de localização
+   * Suporta formatos: "lat,lng" ou nome de cidade
+   */
+  private extractCoordinatesFromLocation(location: string): { lat: number; lng: number } | null {
+    // Tentar extrair coordenadas do formato "lat,lng"
+    const coordMatch = location.match(/^(-?\d+\.?\d*),\s*(-?\d+\.?\d*)$/);
+    if (coordMatch) {
+      return {
+        lat: parseFloat(coordMatch[1]),
+        lng: parseFloat(coordMatch[2]),
+      };
+    }
+
+    // Se não for coordenada, não temos como obter lat/lng sem geocoding
+    // Por enquanto retorna null, mas poderia integrar com GeocodingProvider
+    return null;
   }
 }
